@@ -25,6 +25,7 @@ namespace EthernetCommunication
         public bool DataReceived { get; set; } = false;
         public int NrReceivedBytes { get; set; } = 0;
         public bool IsOnLoopback { get; set; } = true;
+        public Action ProcessDataAction { get; set; }
 
         protected int bytesSent = 0;
 

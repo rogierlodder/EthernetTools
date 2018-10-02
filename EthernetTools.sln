@@ -5,6 +5,10 @@ VisualStudioVersion = 15.0.27130.2020
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EthernetCommunication", "EthernetCommunication\EthernetCommunication.csproj", "{1D633635-0B8C-45BB-98B0-4561AB966706}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClientExample", "ClientExample\ClientExample.csproj", "{ECDBE0DF-D1FF-42F5-99C5-E322628175A2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ServerExample", "ServerExample\ServerExample.csproj", "{5906AB83-33F9-4D69-A6D3-550DD092721F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +19,14 @@ Global
 		{1D633635-0B8C-45BB-98B0-4561AB966706}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1D633635-0B8C-45BB-98B0-4561AB966706}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1D633635-0B8C-45BB-98B0-4561AB966706}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ECDBE0DF-D1FF-42F5-99C5-E322628175A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ECDBE0DF-D1FF-42F5-99C5-E322628175A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ECDBE0DF-D1FF-42F5-99C5-E322628175A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ECDBE0DF-D1FF-42F5-99C5-E322628175A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5906AB83-33F9-4D69-A6D3-550DD092721F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5906AB83-33F9-4D69-A6D3-550DD092721F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5906AB83-33F9-4D69-A6D3-550DD092721F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5906AB83-33F9-4D69-A6D3-550DD092721F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

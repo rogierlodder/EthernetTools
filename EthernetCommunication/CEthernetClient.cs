@@ -6,21 +6,25 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Diagnostics;
+using RLStateMachine;
 
 namespace EthernetCommunication
 {
     public class CEthernetClient : CEthernetDevice
     {
-        public Action<int> ByteDataReceived { get; set; }
-        public Action<string, State> ConnectionChanged { get; set; }
 
         private Stopwatch receiveTimer  = new Stopwatch();
         private Stopwatch ConnectionTimer = new Stopwatch();
         private Stopwatch taskTimer = new Stopwatch();
         private bool StartConnection = false;
-        private State _ConnState = State.NotConnected;
-
         private Timer CycleTimer;
+        private RLSM SM = new RLSM("EthernetClientSM");
+
+        protected Socket ServerSocket { get; set; }
+
+        public Action<int> ByteDataReceived { get; set; }
+        public Action<State> ConnectionChanged { get; set; }
+        public Action TimerTick { get; set; }
 
         public bool Received { get; protected set; }
         public bool RCVTimeout { get; protected set; }
@@ -29,27 +33,73 @@ namespace EthernetCommunication
         public int Cycletime { get; set; } = 100;
         public int nrReceivedBytes { get; private set; } = 0;
 
-        public State ConnState
-        {
-            get { return _ConnState; }
-            set
-            {
-                _ConnState = value;
-                ConnectionChanged?.Invoke(ConnectionName, _ConnState);
-            }
-        }
-
-        protected Socket ServerSocket { get; set; }
+        public State ConnState {  get { return (State)SM.CurrentState; } }
 
         //timeouts
         public int ConnectionTimeout { get; protected set; } = 3000;
         public int SendTimeout { get; protected set; } = 3000;
-        public int ReceiveTimeout { get; protected set; } = 30000;
+        public int ReceiveTimeout { get; protected set; } = 3000;
+        public bool DisconnectReceived { get; private set; } = false;
+        public bool SendTimedOut { get; private set; }
+        public bool SocketCreated { get; private set; }
 
         public CEthernetClient(string name)
         {
             ConnectionName = name;
             CycleTimer = new Timer(RunFromLocalTimer);
+
+            SM.StateChanged = p => ConnectionChanged((State)p);
+
+            SM.AddState(State.NotConnected, new List<Transition>
+            {
+                new Transition("StartConnection", () => StartConnection, () => StartConn(), State.StartingConnection)
+            }, () =>
+            {
+                SocketCreated = false;
+                SendTimedOut = false;
+                DisconnectReceived = false;
+            }, StateType.entry);
+
+            SM.AddState(State.StartingConnection, new List<Transition>
+            {
+                new Transition("ConnectionStarted", () => SocketCreated, null, State.Connecting),
+            }, null, StateType.transition);
+
+            SM.AddState(State.Connecting, new List<Transition>
+            {
+                new Transition("ConnectionReceived", () => ServerSocket.Connected, () =>
+                {
+                    Connstats.NrConnects++;
+                    Connstats.ConnectionTime.Reset();
+                    ConnectHasTimedOut = false;
+                }, State.Connected),
+                new Transition("ConnectionTimeout", () => ConnectionTimer.ElapsedMilliseconds > ConnectionTimeout, ()=>
+                {
+                    ConnectHasTimedOut = true;
+                }, State.NotConnected)
+            }, null, StateType.transition);
+
+            SM.AddState(State.Connected, new List<Transition>
+            {
+                //new Transition("NotConnected", () => ServerSocket.Connected == false, () => Connstats.NrDisconnects++, State.NotConnected),
+                new Transition("SendTimeout", () => SendTimedOut, () => Connstats.NrDisconnects++, State.NotConnected),
+                new Transition("Disconnect", () => StartConnection == false || DisconnectReceived, () => { }, State.NotConnected),
+                new Transition("ReceiveTimeout", () => receiveTimer.ElapsedMilliseconds > ReceiveTimeout, () =>
+                {
+                    receiveTimer.Reset();
+                    RCVTimeout = true;
+                    Received = false;
+                    Connstats.NrDisconnects++;
+                }, State.NotConnected),
+            }, () => 
+            {
+                if (Received)
+                {
+                    receiveTimer.Stop();
+                }
+            }, StateType.idle);
+
+            SM.SaveGraph(@"C:\temp\CethernetClient");
         }
 
         /// <summary>
@@ -83,7 +133,6 @@ namespace EthernetCommunication
 
         public void Disconnect()
         {
-            ConnState = State.NotConnected;
             StartConnection = false;
             CycleTimer.Change(0, Timeout.Infinite);
 
@@ -99,6 +148,7 @@ namespace EthernetCommunication
 
         public void ConnectAndStart()
         {
+            SM.Reset();
             StartConnection = true;
             CycleTimer.Change(0, Cycletime);
         }
@@ -111,7 +161,7 @@ namespace EthernetCommunication
         public bool SendData(byte[] sendBuf, int nrBytesToSend, byte[] receiveBuf)
         {
             Received = false;
-            if (_ConnState != State.Connected) return false;
+            if ((State)SM.CurrentState != State.Connected) return false;
             try
             {
                 RCVTimeout = false;
@@ -124,9 +174,7 @@ namespace EthernetCommunication
             }
             catch
             {
-                RCVTimeout = true; //when the send fails, the receive timout can be called immediately
-                _ConnState = State.NotConnected;
-                Connstats.NrDisconnects++;
+                SendTimedOut = true; //when the send fails, the receive timout can be called immediately
                 return false;
              }
         }
@@ -154,7 +202,7 @@ namespace EthernetCommunication
         {
             //reset nr of received bytes value
             nrReceivedBytes = 0;
-
+            receiveTimer.Restart();
             Socket clnt = (Socket)ar.AsyncState;
             try
             {
@@ -175,7 +223,7 @@ namespace EthernetCommunication
             }
             if (nrReceivedBytes == 0) //a disconnect was received
             {
-                _ConnState = State.NotConnected;
+                DisconnectReceived = true;
             }
         }
 
@@ -186,7 +234,7 @@ namespace EthernetCommunication
         /// <param name="e"></param>
         private void RunFromLocalTimer(object sender)
         {
-            StartConnection = true;
+            TimerTick?.Invoke();
             Run();
         }
 
@@ -195,76 +243,30 @@ namespace EthernetCommunication
         /// </summary>
         public void Run()
         {
-            if (ConnState == State.NotConnected)
+            SM.Run();
+        }
+
+        private void StartConn()
+        {
+            if (ServerSocket != null)
             {
-                ConnectHasTimedOut = false;
-                if (StartConnection)
-                {
-                    _ConnState = State.StartingConnection;
-                }
+                ServerSocket.Close();
+                ServerSocket.Dispose();
             }
+            ServerSocket = new Socket(AddressFamily.InterNetwork, SockType, ProtType);
+            ServerSocket.Blocking = false;
 
-            if (ConnState == State.StartingConnection)
+            ConnectionTimer.Restart();
+            receiveTimer.Restart();
+
+            SocketCreated = true;
+
+            //completely suppress the socket exception. There will always be an exception since the socket was set to non-blocking
+            try
             {
-                if (ServerSocket != null)
-                {
-                    ServerSocket.Close();
-                    ServerSocket.Dispose();
-                }
-                ServerSocket = new Socket(AddressFamily.InterNetwork, SockType, ProtType);
-                ServerSocket.Blocking = false;
-
-                //completely suppress the socket exception. There will always be an exception since the socket was set to non-blocking
-                try
-                {
-                    ConnState = State.Connecting;
-                    ConnectionTimer.Restart();
-                    ServerSocket.Connect(IPaddress, Port);
-                }
-                catch { }
+                ServerSocket.Connect(IPaddress, Port);
             }
-               
-            if (ConnState == State.Connecting)
-            {
-                if (ServerSocket.Connected == true)
-                {
-                    ConnState = State.Connected;
-                    Connstats.NrConnects++;
-                    Connstats.ConnectionTime.Reset();
-                    ConnectHasTimedOut = false;
-                }
-                else
-                {
-                    if (ConnectionTimer.ElapsedMilliseconds > ConnectionTimeout)
-                    {
-                        ConnectHasTimedOut = true;
-                        _ConnState = State.StartingConnection;
-                    }
-                }
-            } 
-
-            if (ConnState == State.Connected)
-            {
-                if (ServerSocket.Connected == false)
-                {
-                    _ConnState = State.NotConnected;
-                    Connstats.NrDisconnects++;
-                }
-
-                if (receiveTimer.ElapsedMilliseconds > ReceiveTimeout)
-                {
-                    receiveTimer.Reset();
-                    RCVTimeout = true;
-                    Received = false;
-                    _ConnState = State.StartingConnection;
-                    Connstats.NrDisconnects++;
-                }
-
-                if (Received)
-                {
-                    receiveTimer.Stop();
-                }
-            }
+            catch { }
         }
 
         /// <summary>
