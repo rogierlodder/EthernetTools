@@ -98,7 +98,16 @@ namespace EthernetCommunication
         {
             Listener = (Socket)ar.AsyncState;
             //acknowledge the connection
-            Socket incomingSocket = Listener.EndAccept(ar); 
+            Socket incomingSocket;
+            try
+            {
+                incomingSocket = Listener.EndAccept(ar);
+            }
+            catch
+            {
+                //the client deleted the socket before the server could accept it
+                return;
+            }
             IPEndPoint ep = (IPEndPoint)incomingSocket.RemoteEndPoint;
 
             TConnection C = new TConnection();
@@ -270,79 +279,3 @@ namespace EthernetCommunication
         #endregion
     }
 }
-
-/*
- public void Run()
-        {
-            if (ConnState == State.NotConnected)
-            {
-                ConnectHasTimedOut = false;
-                if (StartConnection)
-                {
-                    _ConnState = State.StartingConnection;
-                }
-            }
-
-            if (ConnState == State.StartingConnection)
-            {
-                if (ServerSocket != null)
-                {
-                    ServerSocket.Close();
-                    ServerSocket.Dispose();
-                }
-                ServerSocket = new Socket(AddressFamily.InterNetwork, SockType, ProtType);
-                ServerSocket.Blocking = false;
-
-                //completely suppress the socket exception. There will always be an exception since the socket was set to non-blocking
-                try
-                {
-                    ConnState = State.Connecting;
-                    ConnectionTimer.Restart();
-                    ServerSocket.Connect(IPaddress, Port);
-                }
-                catch { }
-            }
-               
-            if (ConnState == State.Connecting)
-            {
-                if (ServerSocket.Connected == true)
-                {
-                    ConnState = State.Connected;
-                    Connstats.NrConnects++;
-                    Connstats.ConnectionTime.Reset();
-                    ConnectHasTimedOut = false;
-                }
-                else
-                {
-                    if (ConnectionTimer.ElapsedMilliseconds > ConnectionTimeout)
-                    {
-                        ConnectHasTimedOut = true;
-                        _ConnState = State.StartingConnection;
-                    }
-                }
-            } 
-
-            if (ConnState == State.Connected)
-            {
-                if (ServerSocket.Connected == false)
-                {
-                    _ConnState = State.NotConnected;
-                    Connstats.NrDisconnects++;
-                }
-
-                if (receiveTimer.ElapsedMilliseconds > ReceiveTimeout)
-                {
-                    receiveTimer.Reset();
-                    RCVTimeout = true;
-                    Received = false;
-                    _ConnState = State.StartingConnection;
-                    Connstats.NrDisconnects++;
-                }
-
-                if (Received)
-                {
-                    receiveTimer.Stop();
-                }
-            }
-        }
-     */

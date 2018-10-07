@@ -23,12 +23,15 @@ namespace ClientExample
 
                 while (EC.ConnState == CEthernetDevice.State.Connected)
                 {
-                    EC.SendData(sendBuf, sendBuf.Length, receiveBuf);
-                    Console.WriteLine($"Sending data: {request}");
+                    if (EC.SendData(sendBuf, sendBuf.Length, receiveBuf))
+                    {
+                        Console.WriteLine($"Sending data: {request}");
 
-                    await EC.ReplyTask();
+                        await EC.ReplyTask();
 
-                    await Task.Delay(100);
+                        await Task.Delay(100);
+                    }
+                    else break;
                 }
             }
         }
@@ -37,12 +40,14 @@ namespace ClientExample
         {
             sendBuf = Enc.GetBytes(request);
 
-            EC.SetConnection("127.0.01", 16669, "TCP");
+            EC.SetConnection("127.0.0.1", 16669, "TCP");
             EC.ConnectAndStart();
 
             EC.ConnectionChanged = p => Console.WriteLine($"New State: {p.ToString()}");
 
             EC.ByteDataReceived = p => Console.WriteLine(Enc.GetString(receiveBuf).Substring(0, p));
+
+            EC.ErrorOccurred = p => Console.WriteLine(p);
 
             Run();
 
