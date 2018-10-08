@@ -34,7 +34,7 @@ namespace EthernetCommunication
         public bool SocketCreated { get; private set; }
         public bool DisconnectReceived { get; private set; } = false;
         public State ConnState {  get { return (State)SM.CurrentState; } }
-        public int nrReceivedBytes { get; private set; } = 0;
+        public int NrReceivedBytes { get; private set; } = 0;
 
         //buffers
         public byte[] rcvBuffer { get; private set; }
@@ -246,28 +246,28 @@ namespace EthernetCommunication
         private void ReceiveCallback(IAsyncResult ar)
         {
             //reset nr of received bytes value
-            nrReceivedBytes = 0;
+            NrReceivedBytes = 0;
             receiveTimer.Reset();
             Socket clnt = (Socket)ar.AsyncState;
             try
             {
-                nrReceivedBytes = clnt.EndReceive(ar);
+                NrReceivedBytes = clnt.EndReceive(ar);
             }
             catch
             {
 
             }
-            if (nrReceivedBytes > 0)
+            if (NrReceivedBytes > 0)
             {
                 //Signal the arrival of new data with the Action
-                ByteDataReceived?.Invoke(nrReceivedBytes);
+                ByteDataReceived?.Invoke(NrReceivedBytes);
                 receiveTimer.Restart();
 
                 Connstats.Receivedpackets++;
                 Received = true;
                 RCVTimeout = false;
             }
-            if (nrReceivedBytes == 0) //a disconnect was received
+            if (NrReceivedBytes == 0) //a disconnect was received
             {
                 DisconnectReceived = true;
             }

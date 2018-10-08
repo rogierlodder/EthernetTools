@@ -6,23 +6,28 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace EthernetCommunication
 {
     public class CEthernetServer<TConnection> : CEthernetDevice where TConnection : ConnectionBase, new()
     {
-        public Action<string> NewConnection { get; set; }
-        public Action<string, byte[], int> NewDataReceived { get; set; }
+        private Socket Listener;
+        private int ConnectionBufSize = 65536;
+        private Timer CleanupTimer;
 
+        //actions
+        public Action<ConnectionBase> NewConnection { get; set; }
+        public Action<string, byte[], int> NewDataReceived { get; set; }
+        public Action<string, string> ReportError { get; set; }
+
+        //connections
         public Dictionary<string, TConnection> AllConnections { get; protected set; } = new Dictionary<string, TConnection>();
         public List<TConnection> AllConnectionsList { get; protected set; } = new List<TConnection>();
         public int NrConnections { get { return AllConnections.Count; } }
 
-        private Socket Listener;
-        private int ConnectionBufSize = 65536;
-
-        public CEthernetServer(string name, string ip, int port, string socktype, int bufsize)
+        public CEthernetServer(string name, string ip, int port, string socktype, int bufsize, long cleanupinterval)
         {
             IPAddress IP;
             if (IPAddress.TryParse(ip, out IP)) IPaddress = IP; else return;
@@ -55,6 +60,9 @@ namespace EthernetCommunication
             catch
             { }
             ConnectionBufSize = bufsize;
+
+            CleanupTimer = new Timer(CleanupConnections);
+            CleanupTimer.Change(0, cleanupinterval*1000);
         }
 
         public void SendDataAsync(string name, byte[] sendData, int nrbytes)
@@ -97,17 +105,22 @@ namespace EthernetCommunication
         private void AcceptConnectCallback(IAsyncResult ar)
         {
             Listener = (Socket)ar.AsyncState;
+            
             //acknowledge the connection
-            Socket incomingSocket;
+            Socket incomingSocket = null;
             try
             {
                 incomingSocket = Listener.EndAccept(ar);
             }
             catch
             {
-                //the client deleted the socket before the server could accept it
-                return;
+                ReportError?.Invoke("EndAccept failed on incoming connection","");
             }
+
+            //put the listener back to listening
+            Listener.BeginAccept(new AsyncCallback(AcceptConnectCallback), Listener);
+
+            if (incomingSocket == null) return;
             IPEndPoint ep = (IPEndPoint)incomingSocket.RemoteEndPoint;
 
             TConnection C = new TConnection();
@@ -116,17 +129,17 @@ namespace EthernetCommunication
             if (AllConnections.ContainsKey(C.Name) == false) AddConnection(C);
 
             //Signal that a new connection has been created
-            NewConnection?.Invoke(C.Name);
+            NewConnection?.Invoke(C);
 
+            //configure the socket to receive incoming data and arm the data reception event
             try
             {
-                //configure the socket to receive incoming data and arm the data reception event
                 C.ConnectionSocket.BeginReceive(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(ReadCallback), C.Name);
-
-                //put the listener back to listening
-                Listener.BeginAccept(new AsyncCallback(AcceptConnectCallback), Listener);
             }
-            catch { }
+            catch
+            {
+                ReportError?.Invoke("BeginReceive failed on new connection", C.Name);
+            }
         }
 
         private void AddConnection(TConnection C)
@@ -143,16 +156,31 @@ namespace EthernetCommunication
         private void ReadCallback(IAsyncResult ar)
         {
             //get the client from the asynchronous state object
-            TConnection C = AllConnections[(string)ar.AsyncState];
+            TConnection C = null;
+            try
+            {
+                C = AllConnections[(string)ar.AsyncState];
+            }
+            catch
+            {
+                ReportError("ReadCallback received from a client that is no longer in the database", "");
+
+                return;
+            }
 
             int bytesread = 0;
             try
             {
                 bytesread = C.ConnectionSocket.EndReceive(ar); //acknowledge the data receipt
             }
-            catch { }
+            catch
+            {
+                ReportError?.Invoke("EndReceive failed during ReadCallback", C.Name);
+            }
             if (bytesread > 0)
             {
+                C.ConnStats.LastComm.Restart();
+                C.ConnStats.Receivedpackets++;
                 //call external function to process the data
                 NewDataReceived?.Invoke(C.Name, C.IncomingData, bytesread);
                 C.NrReceivedBytes = bytesread;
@@ -169,7 +197,10 @@ namespace EthernetCommunication
                 {
                     C.ConnectionSocket.BeginReceive(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(ReadCallback), C.Name);
                 }
-                catch { }
+                catch
+                {
+                    ReportError?.Invoke("BeginReceive failed during ReadCallback", C.Name);
+                }
             }
             else //if a received data event arrives with no data, a disconnect notification was received
             {
@@ -179,16 +210,33 @@ namespace EthernetCommunication
 
         private void SendCallback(IAsyncResult ar)
         {
+            var name = "";
             try
             {
                 // Retrieve the socket from the state object.
                 TConnection C = AllConnections[(string)ar.AsyncState];
+                name = C.Name;
 
                 // Complete sending the data to the remote device.
                 int bytesSent = C.ConnectionSocket.EndSend(ar);
             }
             catch
-            { }
+            {
+                ReportError?.Invoke("EndSend failed during SendCallback", name);
+            }
+        }
+
+        private void CleanupConnections(object sender)
+        {
+            for (int i=0; i< AllConnectionsList.Count; i++)
+            {
+                var C = AllConnectionsList[i];
+                if (C.ConnStats.HasTimedOut)
+                {
+                    AllConnectionsList.Remove(C);
+                    AllConnections.Remove(C.Name);
+                }
+            }
         }
 
         #region Tools

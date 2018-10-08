@@ -15,6 +15,25 @@ namespace EthernetCommunication
         public Stopwatch ConnectionTime { get; set; } = new Stopwatch();
 
         /// <summary>
+        /// Stopwatch for monitoring the time since the last communication
+        /// </summary>
+        public Stopwatch LastComm { get; set; } = new Stopwatch();
+
+        /// <summary>
+        /// The connection timeout. If no traffic has been received during this time, the connection will be terminated
+        /// </summary>
+        public long ConnectionTimeout { get; set; } = 30;
+
+        public bool HasTimedOut
+        {
+            get
+            {
+                if (LastComm.Elapsed.Seconds > ConnectionTimeout) return true;
+                else return false;
+            }
+        }
+
+        /// <summary>
         /// Total number of received packets since the connections was created
         /// </summary>
         public long Receivedpackets { get; set; } = 0;

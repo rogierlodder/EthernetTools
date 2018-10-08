@@ -19,13 +19,14 @@ namespace EthernetCommunication
         public Socket ConnectionSocket { get; protected set; }
         public ClientState ConnState { get; protected set; } = ClientState.NotConnected;
 
-        public IPAddress ipAddress { get; protected set; }
-        public int portNr { get; protected set; }
-        public bool started { get; set; } = false;
+        public IPAddress IpAddress { get; protected set; }
+        public int PortNr { get; protected set; }
+        public bool Started { get; set; } = false;
         public bool DataReceived { get; set; } = false;
         public int NrReceivedBytes { get; set; } = 0;
         public bool IsOnLoopback { get; set; } = true;
         public Action ProcessDataAction { get; set; }
+        public ConnectionStats ConnStats { get; set; } = new ConnectionStats();
 
         protected int bytesSent = 0;
 
@@ -43,16 +44,19 @@ namespace EthernetCommunication
             OutgoingData = new byte[bufferSize];
 
             ConnectionSocket = connectionSocket;
-            ipAddress = adress;
+            IpAddress = adress;
 
-            if (ipAddress.Equals(IPAddress.Loopback)) IsOnLoopback = true;
+            if (IpAddress.Equals(IPAddress.Loopback)) IsOnLoopback = true;
             else IsOnLoopback = false;
 
-            portNr = port;
+            PortNr = port;
             Name = $"{adress.ToString()}:{port}";
 
             //The client is only created with an incoming connection request, so the state can be set to connected.
             ConnState = ClientState.Connected;
+
+            ConnStats.ConnectionTime.Restart();
+            ConnStats.LastComm.Restart();
         }
 
         /// <summary>
@@ -86,6 +90,8 @@ namespace EthernetCommunication
 
                 // Complete sending the data to the remote device.
                 int bytesSent = ConnectionSocket.EndSend(ar);
+                ConnStats.LastComm.Restart();
+                ConnStats.Sentpackets++;
             }
             catch
             { }

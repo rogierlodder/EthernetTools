@@ -13,18 +13,19 @@ namespace ServerExample
         {
             Encoding Enc = Encoding.ASCII;
             string reply = "Great, thanks!";
-            var Server = new CEthernetServer<ConnectionBase>("MyServ", "127.0.0.1", 16669, "TCP", 512);
-            var connection = new ConnectionBase();
+            var Server = new CEthernetServer<ConnectionBase>("MyServ", "127.0.0.1", 16669, "TCP", 512, 10);
 
-            Server.NewConnection = p =>
+            Server.ReportError = (p,n) => Console.WriteLine($"Error: {p}, on: {n}");
+
+            Server.NewConnection = connection =>
             {
-                Console.WriteLine($"A new client connected: {p}");
-                connection = Server.AllConnectionsList.Where(q => q.Name == p).First();
+                Console.WriteLine($"A new client connected: {connection}");
+                connection.ConnStats.ConnectionTimeout = 5;
 
                 connection.ProcessDataAction = () =>
                 {
                     var text = Enc.GetString(connection.IncomingData);
-                    Console.WriteLine($"Incoming data: {text.Substring(0, connection.NrReceivedBytes)}");
+                    Console.WriteLine($"Incoming data({Server.NrConnections}): {text.Substring(0, connection.NrReceivedBytes)}");
                     connection.SendDataAsync(Enc.GetBytes(reply), reply.Length);
                 };
             };
