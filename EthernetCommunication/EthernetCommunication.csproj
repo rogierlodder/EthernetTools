@@ -44,7 +44,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CEthernetClient.cs" />
-    <Compile Include="CethernetDevice.cs" />
+    <Compile Include="CEthernetDevice.cs" />
     <Compile Include="CEthernetServer.cs" />
     <Compile Include="ConnectionBase.cs" />
     <Compile Include="ConnectionStatistics.cs" />

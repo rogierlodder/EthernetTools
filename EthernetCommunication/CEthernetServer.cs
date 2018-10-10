@@ -1,13 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace EthernetCommunication
 {
@@ -27,6 +24,15 @@ namespace EthernetCommunication
         public List<TConnection> AllConnectionsList { get; protected set; } = new List<TConnection>();
         public int NrConnections { get { return AllConnections.Count; } }
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="name">The name of the connection, used to identify it when using the server</param>
+        /// <param name="ip">IP address of the server</param>
+        /// <param name="port">The port number for the incoming connections</param>
+        /// <param name="socktype">Socket type, "TCP" or "UDP"</param>
+        /// <param name="bufsize">Size of the send/receive buffers used by the clients</param>
+        /// <param name="cleanupinterval">INterval with which the server checks for inactive clients</param>
         public CEthernetServer(string name, string ip, int port, string socktype, int bufsize, long cleanupinterval)
         {
             IPAddress IP;
@@ -58,23 +64,46 @@ namespace EthernetCommunication
                 Listener.BeginAccept(new AsyncCallback(AcceptConnectCallback), Listener);
             }
             catch
-            { }
+            {
+                ReportError("BeginAccept failed starting the listening socket","");
+            }
             ConnectionBufSize = bufsize;
 
             CleanupTimer = new Timer(CleanupConnections);
             CleanupTimer.Change(0, cleanupinterval*1000);
         }
 
-        public void SendDataAsync(string name, byte[] sendData, int nrbytes)
+        /// <summary>
+        /// Send data through a client using the name of the client
+        /// </summary>
+        /// <param name="name">Client name</param>
+        /// <param name="sendData">Byet buffer with the data to be sent</param>
+        /// <param name="nrbytes">Number of bytes to be sent</param>
+        /// <returns></returns>
+        public bool SendDataAsync(string name, byte[] sendData, int nrbytes)
         {
-            TConnection C = AllConnections[name];
-            try
+            if (sendData.Length < nrbytes) nrbytes = sendData.Length;
+            if (AllConnections.ContainsKey(name))
             {
-                C.ConnectionSocket.BeginSend(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(SendCallback), C.Name);
+                TConnection C = AllConnections[name];
+                try
+                {
+                    C.ConnectionSocket.BeginSend(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(SendCallback), C.Address);
+                    return true;
+                }
+                catch
+                {
+                    ReportError?.Invoke("BeginSend failed in SendDataAsync", "name");
+                    return false;
+                }
             }
-            catch { }
+            else return false;
         }
 
+        /// <summary>
+        /// Disconnect a client and remove it form the client list
+        /// </summary>
+        /// <param name="name">Client name</param>
         public void RemoveConnection(string name)
         {
             if (!AllConnections.ContainsKey(name)) return;
@@ -88,6 +117,9 @@ namespace EthernetCommunication
             AllConnections.Remove(name);
         }
 
+        /// <summary>
+        /// Disconnect all clients
+        /// </summary>
         public void DisconnectAll()
         {
             foreach (var C in AllConnections.Values)
@@ -96,8 +128,10 @@ namespace EthernetCommunication
                 {
                     C.ConnectionSocket.Disconnect(false);
                 }
-                catch { }
-
+                catch
+                {
+                    //no action required
+                }
             }
             ClearAllConnections();
         }
@@ -126,7 +160,11 @@ namespace EthernetCommunication
             TConnection C = new TConnection();
             C.Setup(incomingSocket, ep.Address, ep.Port, ConnectionBufSize);
 
-            if (AllConnections.ContainsKey(C.Name) == false) AddConnection(C);
+            if (AllConnections.ContainsKey(C.Address) == false)
+            {
+                AllConnections.Add(C.Address, C);
+                AllConnectionsList.Add(C);
+            }
 
             //Signal that a new connection has been created
             NewConnection?.Invoke(C);
@@ -134,19 +172,14 @@ namespace EthernetCommunication
             //configure the socket to receive incoming data and arm the data reception event
             try
             {
-                C.ConnectionSocket.BeginReceive(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(ReadCallback), C.Name);
+                C.ConnectionSocket.BeginReceive(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(ReadCallback), C.Address);
             }
             catch
             {
-                ReportError?.Invoke("BeginReceive failed on new connection", C.Name);
+                ReportError?.Invoke("BeginReceive failed on new connection", C.Address);
             }
         }
 
-        private void AddConnection(TConnection C)
-        {
-            AllConnections.Add(C.Name, C);
-            AllConnectionsList.Add(C);
-        }
         private void ClearAllConnections()
         {
             AllConnections.Clear();
@@ -164,7 +197,6 @@ namespace EthernetCommunication
             catch
             {
                 ReportError("ReadCallback received from a client that is no longer in the database", "");
-
                 return;
             }
 
@@ -175,36 +207,29 @@ namespace EthernetCommunication
             }
             catch
             {
-                ReportError?.Invoke("EndReceive failed during ReadCallback", C.Name);
+                ReportError?.Invoke("EndReceive failed during ReadCallback", C.Address);
             }
             if (bytesread > 0)
             {
                 C.ConnStats.LastComm.Restart();
                 C.ConnStats.Receivedpackets++;
                 //call external function to process the data
-                NewDataReceived?.Invoke(C.Name, C.IncomingData, bytesread);
+                NewDataReceived?.Invoke(C.Address, C.IncomingData, bytesread);
                 C.NrReceivedBytes = bytesread;
 
                 //call the data processing method of the connection itself
                 C.ProcessData();
                 C.ProcessDataAction?.Invoke();
 
-                //signal the arrival of data
-                C.DataReceived = true;
-
                 //set the socket back to listening mode
                 try
                 {
-                    C.ConnectionSocket.BeginReceive(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(ReadCallback), C.Name);
+                    C.ConnectionSocket.BeginReceive(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(ReadCallback), C.Address);
                 }
                 catch
                 {
-                    ReportError?.Invoke("BeginReceive failed during ReadCallback", C.Name);
+                    ReportError?.Invoke("BeginReceive failed during ReadCallback", C.Address);
                 }
-            }
-            else //if a received data event arrives with no data, a disconnect notification was received
-            {
-                //Handle disconnect
             }
         }
 
@@ -215,7 +240,7 @@ namespace EthernetCommunication
             {
                 // Retrieve the socket from the state object.
                 TConnection C = AllConnections[(string)ar.AsyncState];
-                name = C.Name;
+                name = C.Address;
 
                 // Complete sending the data to the remote device.
                 int bytesSent = C.ConnectionSocket.EndSend(ar);
@@ -233,8 +258,10 @@ namespace EthernetCommunication
                 var C = AllConnectionsList[i];
                 if (C.ConnStats.HasTimedOut)
                 {
+                    if (C.ConnectionSocket.Connected) C.ConnectionSocket.Disconnect(false);
+
                     AllConnectionsList.Remove(C);
-                    AllConnections.Remove(C.Name);
+                    AllConnections.Remove(C.Address);
                 }
             }
         }
@@ -253,7 +280,10 @@ namespace EthernetCommunication
             {
                 clientIP = GetUint(IPAddress.Parse(ip));
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
 
             var hosts = GetHostAddresses(true);
             bool matchFound = false;

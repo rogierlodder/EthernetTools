@@ -24,6 +24,9 @@ namespace EthernetCommunication
         /// </summary>
         public long ConnectionTimeout { get; set; } = 30;
 
+        /// <summary>
+        /// returns true if the Lastcomm timer has exceeded the ConnectionTimeout
+        /// </summary>
         public bool HasTimedOut
         {
             get
