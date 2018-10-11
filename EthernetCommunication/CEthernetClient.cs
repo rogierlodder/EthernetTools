@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
@@ -12,7 +11,7 @@ namespace EthernetCommunication
 {
     public class CEthernetClient : CEthernetDevice
     {
-        //timers
+        #region private and protected fields
         private Stopwatch receiveTimer  = new Stopwatch();
         private Stopwatch ConnectionTimer = new Stopwatch();
         private Stopwatch SendTimer = new Stopwatch();
@@ -21,13 +20,14 @@ namespace EthernetCommunication
         private Timer CycleTimer;
         private RLSM SM = new RLSM("EthernetClientSM");
         protected Socket ServerSocket { get; set; }
+        #endregion
 
-
+        #region public properties
         //public delegates
         public Action<int> ByteDataReceived { get; set; }
         public Action<State> ConnectionChanged { get; set; }
         public Action TimerTick { get; set; }
-        public Action<string> ErrorOccurred { get;  set; }
+        public Action<string> ReportError { get;  set; }
 
         //flags and feedback
         public bool Received { get; protected set; }
@@ -51,7 +51,12 @@ namespace EthernetCommunication
         public bool SendTimedOut { get; protected set; }
         public bool RCVTimeout { get; protected set; }
         public bool ConnectHasTimedOut { get; protected set; }
+        #endregion
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="name">Connection name</param>
         public CEthernetClient(string name)
         {
             ConnectionName = name;
@@ -94,18 +99,6 @@ namespace EthernetCommunication
             SM.SaveGraph(@"C:\temp");
         }
 
-        private void SetupConn()
-        {
-            //flags
-            Received = false;
-            SocketCreated = false;
-            DisconnectReceived = false;
- 
-            //timers
-            SendTimer.Reset();
-            receiveTimer.Reset();
-        }
-
         /// <summary>
         /// Method for resetting the error flags. These are not reset by the class itself
         /// </summary>
@@ -114,35 +107,6 @@ namespace EthernetCommunication
             SendTimedOut = false;
             RCVTimeout = false;
             ConnectHasTimedOut = false;
-        }
-
-        private bool MonitorConnection()
-        {
-            if (StartConnection == false || DisconnectReceived)
-            {
-                ErrorOccurred?.Invoke("A disconnect was reveived when waiting for data");
-                Connstats.NrDisconnects++;
-                return false;
-            }
-            if (ServerSocket.Connected == false)
-            {
-                ErrorOccurred?.Invoke("The socket is no longer connected");
-                Connstats.NrDisconnects++;
-                return false;
-            }
-            if (SendTimer.ElapsedMilliseconds > SendTimeout)
-            {
-                ErrorOccurred?.Invoke("Timeout waiting for the data to be sent");
-                Connstats.NrDisconnects++;
-                return false;
-            }
-            if (receiveTimer.ElapsedMilliseconds > ReceiveTimeout)
-            {
-                ErrorOccurred?.Invoke("Timeout waiting for reply");
-                Connstats.NrDisconnects++;
-                return false;
-            }
-            return true;
         }
 
         /// <summary>
@@ -169,11 +133,17 @@ namespace EthernetCommunication
 
         }
 
+        /// <summary>
+        /// Starts the state machine but not hte internal timer
+        /// </summary>
         public void Connect()
         {
             StartConnection = true;
         }
 
+        /// <summary>
+        /// Disconnects the client and stops the state machine
+        /// </summary>
         public void Disconnect()
         {
             StartConnection = false;
@@ -189,6 +159,9 @@ namespace EthernetCommunication
             }
         }
 
+        /// <summary>
+        /// Starts the state machine and the internal timer
+        /// </summary>
         public void ConnectAndStart()
         {
             SM.Finalize();
@@ -197,9 +170,11 @@ namespace EthernetCommunication
         }
 
         /// <summary>
-        /// Send a command and start the asynchronous wait for the reply
+        /// Send binary data to the server
         /// </summary>
-        /// <param name="DP">Dataprocessing object to be used</param>
+        /// <param name="sendBuf">Buffer with the data to be sent</param>
+        /// <param name="nrBytesToSend">Number of bytes to send from the buffer</param>
+        /// <param name="receiveBuf">Buffer where the reply is to be stored</param>
         /// <returns></returns>
         public bool SendData(byte[] sendBuf, int nrBytesToSend, byte[] receiveBuf)
         {
@@ -223,99 +198,12 @@ namespace EthernetCommunication
         }
 
         /// <summary>
-        /// The SendCallBack that is called when data is successfully sent
-        /// </summary>
-        /// <param name="ar"></param>
-        private void SendCallback(IAsyncResult ar)
-        {
-            try
-            {
-                Socket clnt = (Socket)ar.AsyncState;
-                int bytesSent = clnt.EndSend(ar);
-                Connstats.Sentpackets++;
-                SendTimer.Reset();
-                receiveTimer.Restart();
-            }
-            catch { }
-        }
-
-        /// <summary>
-        /// The receive call back from the BeginReceive command issued when a command is sent
-        /// </summary>
-        /// <param name="ar"></param>
-        private void ReceiveCallback(IAsyncResult ar)
-        {
-            //reset nr of received bytes value
-            NrReceivedBytes = 0;
-            receiveTimer.Reset();
-            Socket clnt = (Socket)ar.AsyncState;
-            try
-            {
-                NrReceivedBytes = clnt.EndReceive(ar);
-            }
-            catch
-            {
-
-            }
-            if (NrReceivedBytes > 0)
-            {
-                //Signal the arrival of new data with the Action
-                ByteDataReceived?.Invoke(NrReceivedBytes);
-                receiveTimer.Restart();
-
-                Connstats.Receivedpackets++;
-                Received = true;
-                RCVTimeout = false;
-            }
-            if (NrReceivedBytes == 0) //a disconnect was received
-            {
-                DisconnectReceived = true;
-            }
-        }
-
-        /// <summary>
-        /// Start and run the connection with the local timer
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void RunFromLocalTimer(object sender)
-        {
-            TimerTick?.Invoke();
-            Run();
-        }
-
-        /// <summary>
-        /// The state machine of the connection. Requires an external call (most likely from a Timer) to run.
+        /// Runs the state machine of the client for a single cycle
         /// </summary>
         public void Run()
         {
             SM.Run();
         }
-
-        private void StartConn()
-        {
-            if (ServerSocket != null)
-            {
-                ServerSocket.Close();
-                ServerSocket.Dispose();
-            }
-            ServerSocket = new Socket(AddressFamily.InterNetwork, SockType, ProtType);
-            ServerSocket.Blocking = false;
-
-            ConnectionTimer.Restart();
-            receiveTimer.Restart();
-
-            SocketCreated = true;
-
-            //completely suppress the socket exception. There will always be an exception since the socket was set to non-blocking
-            try
-            {
-                ServerSocket.Connect(IPaddress, Port);
-            }
-            catch { }
-        }
-
-
 
         /// <summary>
         /// Task for waiting on the reply of the sent command
@@ -347,6 +235,117 @@ namespace EthernetCommunication
             });
         }
 
+        private void SetupConn()
+        {
+            //flags
+            Received = false;
+            SocketCreated = false;
+            DisconnectReceived = false;
+ 
+            //timers
+            SendTimer.Reset();
+            receiveTimer.Reset();
+        }
 
+        private void SendCallback(IAsyncResult ar)
+        {
+            try
+            {
+                Socket clnt = (Socket)ar.AsyncState;
+                int bytesSent = clnt.EndSend(ar);
+                Connstats.Sentpackets++;
+                SendTimer.Reset();
+                receiveTimer.Restart();
+            }
+            catch { }
+        }
+
+        private void ReceiveCallback(IAsyncResult ar)
+        {
+            //reset nr of received bytes value
+            NrReceivedBytes = 0;
+            receiveTimer.Reset();
+            Socket clnt = (Socket)ar.AsyncState;
+            try
+            {
+                NrReceivedBytes = clnt.EndReceive(ar);
+            }
+            catch
+            {
+
+            }
+            if (NrReceivedBytes > 0)
+            {
+                //Signal the arrival of new data with the Action
+                ByteDataReceived?.Invoke(NrReceivedBytes);
+                receiveTimer.Restart();
+
+                Connstats.Receivedpackets++;
+                Received = true;
+                RCVTimeout = false;
+            }
+            if (NrReceivedBytes == 0) //a disconnect was received
+            {
+                DisconnectReceived = true;
+            }
+        }
+
+        private void RunFromLocalTimer(object sender)
+        {
+            TimerTick?.Invoke();
+            Run();
+        }
+
+        private bool MonitorConnection()
+        {
+            if (StartConnection == false || DisconnectReceived)
+            {
+                ReportError?.Invoke("A disconnect was reveived when waiting for data");
+                Connstats.NrDisconnects++;
+                return false;
+            }
+            if (ServerSocket.Connected == false)
+            {
+                ReportError?.Invoke("The socket is no longer connected");
+                Connstats.NrDisconnects++;
+                return false;
+            }
+            if (SendTimer.ElapsedMilliseconds > SendTimeout)
+            {
+                ReportError?.Invoke("Timeout waiting for the data to be sent");
+                Connstats.NrDisconnects++;
+                return false;
+            }
+            if (receiveTimer.ElapsedMilliseconds > ReceiveTimeout)
+            {
+                ReportError?.Invoke("Timeout waiting for reply");
+                Connstats.NrDisconnects++;
+                return false;
+            }
+            return true;
+        }
+
+        private void StartConn()
+        {
+            if (ServerSocket != null)
+            {
+                ServerSocket.Close();
+                ServerSocket.Dispose();
+            }
+            ServerSocket = new Socket(AddressFamily.InterNetwork, SockType, ProtType);
+            ServerSocket.Blocking = false;
+
+            ConnectionTimer.Restart();
+            receiveTimer.Restart();
+
+            SocketCreated = true;
+
+            //completely suppress the socket exception. There will always be an exception since the socket was set to non-blocking
+            try
+            {
+                ServerSocket.Connect(IPaddress, Port);
+            }
+            catch { }
+        }
     }
 }

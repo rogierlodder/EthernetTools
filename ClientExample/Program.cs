@@ -12,7 +12,7 @@ namespace ClientExample
         static Encoding Enc = Encoding.ASCII;
         static byte[] sendBuf = new byte[256];
         static byte[] receiveBuf = new byte[256];
-        static string request = "Hey, how is it going?";
+        static string request = "This is the request from the client";
         static CEthernetClient EC = new CEthernetClient("TestClient");
 
         static async Task Run()
@@ -47,8 +47,9 @@ namespace ClientExample
 
             EC.ByteDataReceived = p => Console.WriteLine(Enc.GetString(receiveBuf).Substring(0, p));
 
-            EC.ErrorOccurred = p => Console.WriteLine(p);
+            EC.ReportError = p => Console.WriteLine(p);
 
+            //Start polling the server in the background
             Run();
 
             Console.ReadLine();

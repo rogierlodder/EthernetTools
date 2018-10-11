@@ -12,7 +12,7 @@ namespace ServerExample
         static void Main(string[] args)
         {
             Encoding Enc = Encoding.ASCII;
-            string reply = "Great, thanks!";
+            string reply = "This is the reply form the server";
             var Server = new CEthernetServer<ConnectionBase>("MyServ", "127.0.0.1", 16669, "TCP", 512, 10);
 
             Server.ReportError = (p,n) => Console.WriteLine($"Error: {p}, on: {n}");

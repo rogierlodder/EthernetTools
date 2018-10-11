@@ -10,8 +10,8 @@ namespace EthernetCommunication
 {
     public class ConnectionBase
     {
-        public byte[] IncomingData;
-        public byte[] OutgoingData;
+        public byte[] IncomingData { get; set; }
+        public byte[] OutgoingData { get; set; }
 
         public string Address { get; private set; }
         public Socket ConnectionSocket { get; protected set; }
@@ -26,6 +26,7 @@ namespace EthernetCommunication
 
         public Action ProcessDataAction { get; set; }
         public Action<string, string> ReportError { get; set; }
+
         protected int bytesSent = 0;
 
         public ConnectionBase() { }
