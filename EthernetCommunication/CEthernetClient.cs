@@ -62,7 +62,7 @@ namespace EthernetCommunication
             ConnectionName = name;
             CycleTimer = new Timer(RunFromLocalTimer);
 
-            SM.StateChanged = p => ConnectionChanged((State)p);
+            if (ConnectionChanged != null) SM.StateChanged = p => ConnectionChanged((State)p);
 
             SM.AddState(State.NotConnected, new List<Transition>
             {
@@ -96,7 +96,7 @@ namespace EthernetCommunication
                 new Transition("Disconnect", () => MonitorConnection() == false, () => { }, State.NotConnected),
             }, null, StateType.idle);
 
-            SM.SaveGraph(@"C:\temp");
+            SM.Finalize();
         }
 
         /// <summary>

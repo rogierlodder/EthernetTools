@@ -89,6 +89,7 @@ namespace EthernetCommunication
                 try
                 {
                     C.ConnectionSocket.BeginSend(C.IncomingData, 0, C.IncomingData.Length, 0, new AsyncCallback(SendCallback), C.Address);
+                    C.DataReceived = false;
                     return true;
                 }
                 catch
@@ -196,7 +197,7 @@ namespace EthernetCommunication
             }
             catch
             {
-                ReportError("ReadCallback received from a client that is no longer in the database", "");
+                ReportError?.Invoke("ReadCallback received from a client that is no longer in the database", "");
                 return;
             }
 
@@ -216,6 +217,7 @@ namespace EthernetCommunication
                 //call external function to process the data
                 NewDataReceived?.Invoke(C.Address, C.IncomingData, bytesread);
                 C.NrReceivedBytes = bytesread;
+                C.DataReceived = true;
 
                 //call the data processing method of the connection itself
                 C.ProcessData();

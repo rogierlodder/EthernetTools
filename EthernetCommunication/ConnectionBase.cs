@@ -24,6 +24,7 @@ namespace EthernetCommunication
         public bool IsOnLoopback { get; set; } = true;
         public ConnectionStats ConnStats { get; set; } = new ConnectionStats();
 
+        public bool DataReceived { get; set; } = false;
         public Action ProcessDataAction { get; set; }
         public Action<string, string> ReportError { get; set; }
 
@@ -68,6 +69,7 @@ namespace EthernetCommunication
             try
             {
                 ConnectionSocket.BeginSend(sendData, 0, nrbytes, 0, new AsyncCallback(SendCallback), Address);
+                DataReceived = false;
                 return true;
             }
             catch
