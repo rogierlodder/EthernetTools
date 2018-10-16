@@ -32,7 +32,7 @@ namespace EthernetCommunication
         /// <param name="port">The port number for the incoming connections</param>
         /// <param name="socktype">Socket type, "TCP" or "UDP"</param>
         /// <param name="bufsize">Size of the send/receive buffers used by the clients</param>
-        /// <param name="cleanupinterval">INterval with which the server checks for inactive clients</param>
+        /// <param name="cleanupinterval">Interval in seconds with which the server checks for inactive clients, 0 -> no cleanup</param>
         public CEthernetServer(string name, string ip, int port, string socktype, int bufsize, long cleanupinterval)
         {
             IPAddress IP;
@@ -70,7 +70,9 @@ namespace EthernetCommunication
             ConnectionBufSize = bufsize;
 
             CleanupTimer = new Timer(CleanupConnections);
-            CleanupTimer.Change(0, cleanupinterval*1000);
+
+            if (cleanupinterval == 0) CleanupTimer.Change(0, Timeout.Infinite);
+            else CleanupTimer.Change(0, cleanupinterval*1000);
         }
 
         /// <summary>

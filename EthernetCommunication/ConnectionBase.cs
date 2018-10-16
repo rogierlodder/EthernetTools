@@ -13,6 +13,9 @@ namespace EthernetCommunication
         public byte[] IncomingData { get; set; }
         public byte[] OutgoingData { get; set; }
 
+        //and extra property to identify the client
+        public uint ClientID { get; set; }
+
         public string Address { get; private set; }
         public Socket ConnectionSocket { get; protected set; }
         public bool Connected { get; protected set; } = false;

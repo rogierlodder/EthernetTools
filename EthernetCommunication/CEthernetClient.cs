@@ -25,7 +25,7 @@ namespace EthernetCommunication
         #region public properties
         //public delegates
         public Action<int> ByteDataReceived { get; set; }
-        public Action<State> ConnectionChanged { get; set; }
+        public Action<State> ConnectionChanged { get; set; } = p => { };
         public Action TimerTick { get; set; }
         public Action<string> ReportError { get;  set; }
 
@@ -62,7 +62,7 @@ namespace EthernetCommunication
             ConnectionName = name;
             CycleTimer = new Timer(RunFromLocalTimer);
 
-            if (ConnectionChanged != null) SM.StateChanged = p => ConnectionChanged((State)p);
+            SM.StateChanged = p => ConnectionChanged((State)p);
 
             SM.AddState(State.NotConnected, new List<Transition>
             {
