@@ -300,7 +300,7 @@ namespace EthernetCommunication
         {
             if (StartConnection == false || DisconnectReceived)
             {
-                ReportError?.Invoke("A disconnect was reveived when waiting for data");
+                ReportError?.Invoke("A disconnect was received while waiting for data");
                 Connstats.NrDisconnects++;
                 return false;
             }
